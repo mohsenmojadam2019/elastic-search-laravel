@@ -1,0 +1,207 @@
+version: '3'
+
+networks:
+  laravel:
+
+services:
+  site:
+    build:
+      context: ./dockerfiles
+      dockerfile: nginx.dockerfile
+      args:
+        - UID=${UID:-1000}
+        - GID=${GID:-1000}
+    container_name: nginx
+    ports:
+      - 80:80
+    volumes:
+      - ./src:/var/www/html:delegated
+    depends_on:
+      - php
+      - redis
+      - mysql
+      - es01
+      #      - mailhog
+    #            - elasticsearch
+    networks:
+      - laravel
+
+  mysql:
+    image: mariadb:10.6
+    container_name: mysql
+    restart: unless-stopped
+    tty: true
+    ports:
+      - 3306:3306
+    volumes:
+      - ./mysql:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: homestead
+      MYSQL_USER: homestead
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: secret
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    networks:
+      - laravel
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: ${DB_HOST:-mysql}
+      PMA_USER: ${DB_USERNAME:-homestead}
+      PMA_PASSWORD: ${DB_PASSWORD:-secret}
+      UPLOAD_LIMIT: 20g
+    depends_on:
+      - mysql
+    networks:
+      - laravel
+    ports:
+      - "8080:80"
+  php:
+    build:
+      context: ./dockerfiles
+      dockerfile: php.dockerfile
+      args:
+        - UID=${UID:-1000}
+        - GID=${GID:-1000}
+    container_name: php
+    volumes:
+      - ./src:/var/www/html:delegated
+    networks:
+      - laravel
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    networks:
+      - laravel
+
+  composer:
+    build:
+      context: ./dockerfiles
+      dockerfile: composer.dockerfile
+      args:
+        - UID=${UID:-1000}
+        - GID=${GID:-1000}
+    container_name: composer
+    volumes:
+      - ./src:/var/www/html
+    working_dir: /var/www/html
+    depends_on:
+      - php
+    user: laravel
+    entrypoint: [ 'composer', '--ignore-platform-reqs' ]
+    networks:
+      - laravel
+
+  #  npm:
+  #    image: node:13.7
+  #    container_name: npm
+  #    volumes:
+  #      - ./src:/var/www/html
+  #    ports:
+  #      - 3000:3000
+  #      - 3001:3001
+  #    working_dir: /var/www/html
+  #    entrypoint: ['npm']
+  #    networks:
+  #      - laravel
+
+  artisan:
+    build:
+      context: ./dockerfiles
+      dockerfile: php.dockerfile
+      args:
+        - UID=${UID:-1000}
+        - GID=${GID:-1000}
+    container_name: artisan
+    volumes:
+      - ./src:/var/www/html:delegated
+    depends_on:
+      - mysql
+    working_dir: /var/www/html
+    entrypoint: [ 'php', '/var/www/html/artisan' ]
+    networks:
+      - laravel
+
+
+  #  elasticsearch:
+  #    image: docker.io/bitnami/elasticsearch:8
+  #    container_name: elasticsearch
+  #    #build: .
+  #    ports:
+  #      - '9200:9200'
+  #      - '9300:9300'
+  #    environment:
+  #      discovery.type: single-node
+  #      ES_JAVA_OPTS: -Xmx512m -Xms512m
+  #      node.name: es01
+  #      cluster.name: elasticsearch
+  #    volumes:
+  #      - ./elastic/data:/usr/share/elasticsearch/data
+  #    #        networks:
+  #    #            - elasticnet
+  #
+  #  kibana:
+  #    image: docker.io/bitnami/kibana:8
+  #    container_name: kibana
+  #    ports:
+  #      - '5601:5601'
+  #      - '9600:9600'
+  #    environment:
+  #      SERVERNAME: kibana
+  #      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+  #      ES_JAVA_OPTS: -Xmx512m -Xms512m
+  #    #        networks:
+  #    #            - elasticnet
+  #    depends_on:
+  #      - elasticsearch
+
+  #####
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.9.3
+    container_name: es02
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - data01:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+    networks:
+      - laravel
+
+  kib01:
+    image: docker.elastic.co/kibana/kibana:7.9.3
+    container_name: kib01
+    ports:
+      - 5601:5601
+    environment:
+      ELASTICSEARCH_URL: http://es01:9200
+      ELASTICSEARCH_HOSTS: http://es01:9200
+    networks:
+      - laravel
+
+volumes:
+  data01:
+    driver: local
+
+  #    networks:
+  es01:
+    driver: bridge
+
+
+
+#volumes:
+#    logvolume01: {}
